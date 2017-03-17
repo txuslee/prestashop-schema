@@ -25,17 +25,22 @@ import org.gradle.internal.impldep.org.apache.http.impl.client.HttpClientBuilder
 import javax.lang.model.SourceVersion
 import javax.lang.model.element.Modifier
 
+class SchemaPluginExtension {
+    String username = "M6E6T38GMYHV47ENWE9Y6CLYE3BNQ1SJ"
+    String hostUrl = "https://www.delicap.es"
+    String apiUrl = "/pstest/api/"
+    String packageName = "com.delicap.schema"
+}
+
 class SchemaPlugin implements Plugin<Project> {
-    // $Host_URL
-    // $API_URL
-    // $API_Key
     // $output_Folder
     // $output_package
     // $parent_abstract_class_fully_qualified_name
     // $interface_fully_qualified_name + ID TypeName
 
     private void fetchResource(Project project, CloseableHttpClient client, HttpHost target, String resource) {
-        CloseableHttpResponse response = client.execute(target, new HttpGet("/pstest/api/" + resource + "?output_format=XML&schema=synopsis"))
+        String apiUrl = project.schema.apiUrl + resource + "?output_format=XML&schema=synopsis"
+        CloseableHttpResponse response = client.execute(target, new HttpGet(apiUrl))
         try {
             def xmlFile = new File("./build/output/" + resource + ".xml")
             HttpEntity entity = response.getEntity()
@@ -51,13 +56,14 @@ class SchemaPlugin implements Plugin<Project> {
 
             // Generate java source code
             def node = xmlParser.parse(xmlFile)
-            ClassName identifiable = ClassName.get("com.delicap.schema", "Identifiable")
+            String packageName = project.schema.packageName
+            ClassName identifiable = ClassName.get(packageName, "Identifiable")
             ClassName nonnull = ClassName.get("android.support.annotation", "NonNull")
             ClassName nullable = ClassName.get("android.support.annotation", "Nullable")
             // Bypass <prestashop> node
             Node child = node.children().get(0)
             def className = CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, child.name().toString())
-            ClassName classRef = ClassName.get("com.delicap.schema", className)
+            ClassName classRef = ClassName.get(packageName, className)
             // Gson TypeAdapter
             MethodSpec typeAdapterSpec = MethodSpec.methodBuilder("typeAdapter")
                     .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
@@ -114,7 +120,7 @@ class SchemaPlugin implements Plugin<Project> {
             }
 
             TypeSpec nodeSpec = typeSpecBuilder.build()
-            JavaFile javaFile = JavaFile.builder("com.delicap.schema", nodeSpec).build()
+            JavaFile javaFile = JavaFile.builder(packageName, nodeSpec).build()
             javaFile.writeTo(new File("./build/output/"))
         } finally {
             response.close()
@@ -122,17 +128,21 @@ class SchemaPlugin implements Plugin<Project> {
     }
 
     void apply(Project project) {
+        // Add the 'schema' extension object
+        project.extensions.create("schema", SchemaPluginExtension)
+
         CredentialsProvider credentialsProvider = new BasicCredentialsProvider()
-        credentialsProvider.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials("M6E6T38GMYHV47ENWE9Y6CLYE3BNQ1SJ", ""))
+        credentialsProvider.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials(project.schema.username, ""))
 
         CloseableHttpClient client = HttpClientBuilder.create()
                 .setSSLHostnameVerifier(new NoopHostnameVerifier())
                 .setDefaultCredentialsProvider(credentialsProvider)
                 .build()
 
-        HttpHost target = HttpHost.create("https://www.delicap.es")
+        HttpHost target = HttpHost.create(project.schema.hostUrl)
 
-        CloseableHttpResponse response = client.execute(target, new HttpGet("/pstest/api/?output_format=JSON&schema=blank"))
+        String apiUrl = project.schema.apiUrl + "?output_format=JSON&schema=blank"
+        CloseableHttpResponse response = client.execute(target, new HttpGet(apiUrl))
         try {
             def slurper = new JsonSlurper()
             HttpEntity entity = response.getEntity()
